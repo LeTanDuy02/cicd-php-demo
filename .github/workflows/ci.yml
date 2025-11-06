@@ -2,24 +2,49 @@ name: PHP CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: [8.1, 8.2]
+      fail-fast: false
+
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Setup PHP
+    - name: Cache Composer dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/composer
+        key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-${{ matrix.php-version }}-
+
+    - name: Setup PHP ${{ matrix.php-version }}
       uses: shivammathur/setup-php@v2
       with:
-        php-version: '8.2'
+        php-version: ${{ matrix.php-version }}
+        extensions: mbstring, intl, xml, zip, pdo
+        coverage: xdebug
+
+    - name: Validate composer.json
+      run: composer validate --strict
 
     - name: Install dependencies
-      run: composer install
+      run: composer install --prefer-dist --no-interaction --no-progress
 
-    - name: Run tests
+    - name: Run unit tests
       run: vendor/bin/phpunit --testdox
+
+    - name: Upload coverage (if generated)
+      if: ${{ always() && matrix.php-version == '8.2' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: phpunit-coverage-${{ matrix.php-version }}
+        path: coverage.xml
